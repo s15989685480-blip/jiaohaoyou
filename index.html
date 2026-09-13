@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>双语多人语音聊天室 Supabase</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        body {
+            background-color: #f0f2f5;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        /* 登录注册弹窗 */
+        .auth-box {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.45);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 99;
+        }
+        .auth-card {
+            background: #fff;
+            width: 90%;
+            max-width: 400px;
+            padding: 28px 24px;
+            border-radius: 14px;
+        }
+        .auth-card h2 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .input-item {
+            margin-bottom:14px;
+        }
+        .input-item label{
+            display:block;
+            margin-bottom:6px;
+            font-size:14px;
+        }
+        .input-item input{
+            width:100%;
+            padding:11px 12px;
+            border:1px solid #ccc;
+            border-radius:8px;
+            font-size:16px;
+        }
+        .btn-group{
+            display:flex;
+            gap:10px;
+            margin-top:16px;
+        }
+        button{
+            flex:1;
+            padding:11px;
+            border:none;
+            border-radius:8px;
+            font-size:15px;
+            cursor:pointer;
+        }
+        .btn-login{
+            background:#2563eb;
+            color:white;
+        }
+        .btn-reg{
+            background:#10b981;
+            color:white;
+        }
+        .tip-text{
+            font-size:13px;
+            color:#666;
+            margin-top:12px;
+            text-align:center;
+        }
+        .stat-info{
+            font-size:12px;
+            color:#666;
+            text-align:center;
+            margin-top:10px;
+        }
+        /* 顶部栏 */
+        .header-bar{
+            background:#2563eb;
+            color:white;
+            padding:12px 16px;
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+        }
+        .lang-switch{
+            background:white;
+            color:#2563eb;
+            border-radius:6px;
+            padding:6px 10px;
+            font-size:14px;
+        }
+        /* 聊天区域 */
+        .chat-wrap{
+            flex:1;
+            overflow-y:auto;
+            padding:14px;
+        }
+        .msg-item{
+            margin-bottom:12px;
+            max-width:75%;
+        }
+        .msg-self{
+            margin-left:auto;
+        }
+        .msg-bubble{
+            padding:10px 14px;
+            border-radius:12px;
+        }
+        .msg-self .msg-bubble{
+            background:#2563eb;
+            color:white;
+        }
+        .msg-other .msg-bubble{
+            background:#e5e7eb;
+            color:#111;
+        }
+        .msg-name{
+            font-size:12px;
+            margin-bottom:4px;
+            color:#555;
+        }
+        /* 输入底部 */
+        .input-area{
+            padding:12px;
+            background:#fff;
+            border-top:1px solid #ddd;
+            display:flex;
+            gap:8px;
+        }
+        #chatInput{
+            flex:1;
+            padding:10px 12px;
+            border:1px solid #ccc;
+            border-radius:8px;
+            font-size:16px;
+        }
+        .btn-voice{
+            background:#f97316;
+            color:white;
+            min-width:48px;
+        }
+        .btn-send{
+            background:#2563eb;
+            color:white;
+            min-width:64px;
+        }
+        .hide{
+            display:none !important;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <!--登录注册弹窗-->
+    <div class="auth-box" id="authModal">
+        <div class="auth-card">
+            <h2 id="authTitle">登录 / 注册</h2>
+            <div class="input-item">
+                <label id="labelUser">账号</label>
+                <input type="text" id="username" placeholder="" autocomplete="off">
+            </div>
+            <div class="input-item">
+                <label id="labelPwd">密码</label>
+                <input type="password" id="password" placeholder="">
+            </div>
+            <div class="btn-group">
+                <button class="btn-login" id="btnLogin">登录</button>
+                <button class="btn-reg" id="btnRegister">注册</button>
+            </div>
+            <div class="tip-text" id="authTip">注册无需验证，数据保存在云端</div>
+            <div class="stat-info" id="statText"></div>
+        </div>
+    </div>
+
+    <!--聊天主界面-->
+    <div class="header-bar hide" id="chatHeader">
+        <span id="userShow">用户</span>
+        <span id="headerStat" style="font-size:13px;opacity:0.9;"></span>
+        <button class="lang-switch" id="switchLang">English</button>
+    </div>
+    <div class="chat-wrap hide" id="chatBox"></div>
+    <div class="input-area hide" id="inputPanel">
+        <input type="text" id="chatInput" placeholder="">
+        <button class="btn-voice" id="voiceBtn">🎤</button>
+        <button class="btn-send" id="sendBtn">发送</button>
+    </div>
+</div>
+
+<script>
+// ========= 替换为你自己Supabase项目信息 =========
+const SUPABASE_URL = "https://rqpdsrdossbefyvyprvo.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_f-ZcuZgFDvfvK62JL6mQxw_qRmzTZe1";
+// ==============================================
+
+// 仅此一处创建supabase实例
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth:{
+        storage:{
+            getItem:(k)=>{try{return localStorage.getItem(k)}catch{return null}},
+            setItem:(k,v)=>{try{localStorage.setItem(k,v)}catch{}},
+            removeItem:(k)=>{try{localStorage.removeItem(k)}catch{}}
+        }
+    }
+});
+
+// 双语文本配置
+const langData = {
+    zh:{
+        authTitle:"登录 / 注册",
+        labelUser:"账号",
+        labelPwd:"密码",
+        placeholderUser:"请输入账号",
+        placeholderPwd:"请输入密码",
+        authTip:"注册无需验证，数据保存在云端",
+        btnLogin:"登录",
+        btnRegister:"注册",
+        placeholderChat:"输入消息...",
+        voiceTip:"语音识别中，请说话...",
+        switchText:"English",
+        loginSuccess:"登录成功",
+        regSuccess:"注册成功，请登录",
+        userExist:"账号已存在",
+        noAccount:"账号不存在",
+        pwdErr:"密码错误",
+        emptyInput:"账号密码不能为空",
+        emptyMsg:"消息不能为空",
+        statVisit:"总访问次数",
+        statUser:"注册用户总数",
+        dbError:"数据库请求失败，请稍后重试"
+    },
+    en:{
+        authTitle:"Login / Register",
+        labelUser:"Username",
+        labelPwd:"Password",
+        placeholderUser:"Enter username",
+        placeholderPwd:"Enter password",
+        authTip:"No verification required, cloud storage",
+        btnLogin:"Login",
+        btnRegister:"Register",
+        placeholderChat:"Type message...",
+        voiceTip:"Listening, please speak...",
+        switchText:"中文",
+        loginSuccess:"Login success",
+        regSuccess:"Register success, please login",
+        userExist:"Username exists",
+        noAccount:"Account not found",
+        pwdErr:"Wrong password",
+        emptyInput:"Username and password cannot be empty",
+        emptyMsg:"Message cannot be empty",
+        statVisit:"Total Visits",
+        statUser:"Total Registered Users",
+        dbError:"Database request failed"
+    }
+};
+let currentLang = "zh";
+let currentUser = null;
+let realtimeChannel = null;
+
+// DOM
+const authModal = document.getElementById("authModal");
+const chatHeader = document.getElementById("chatHeader");
+const chatBox = document.getElementById("chatBox");
+const inputPanel = document.getElementById("inputPanel");
+const usernameEl = document.getElementById("username");
+const passwordEl = document.getElementById("password");
+const btnLogin = document.getElementById("btnLogin");
+const btnRegister = document.getElementById("btnRegister");
+const userShow = document.getElementById("userShow");
+const switchLangBtn = document.getElementById("switchLang");
+const chatInput = document.getElementById("chatInput");
+const voiceBtn = document.getElementById("voiceBtn");
+const sendBtn = document.getElementById("sendBtn");
+const statTextEl = document.getElementById("statText");
+const headerStatEl = document.getElementById("headerStat");
+
+// 更新页面语言
+function updateLang(){
+    const t = langData[currentLang];
+    document.getElementById("authTitle").innerText = t.authTitle;
+    document.getElementById("labelUser").innerText = t.labelUser;
+    document.getElementById("labelPwd").innerText = t.labelPwd;
+    usernameEl.placeholder = t.placeholderUser;
+    passwordEl.placeholder = t.placeholderPwd;
+    document.getElementById("authTip").innerText = t.authTip;
+    btnLogin.innerText = t.btnLogin;
+    btnRegister.innerText = t.btnRegister;
+    chatInput.placeholder = t.placeholderChat;
+    switchLangBtn.innerText = t.switchText;
+    refreshStatDisplay();
+}
+
+// 读取全局统计
+async function getStats(){
+    try{
+        const {data,error} = await supabase.from("app_stats").select("*").eq("id",1).single();
+        if(error) throw error;
+        return data;
+    }catch(err){
+        console.error("getStats error",err);
+        return null;
+    }
+}
+
+// 访问次数+1
+async function addVisitCount(){
+    try{
+        const stat = await getStats();
+        if(!stat) return;
+        await supabase.from("app_stats").update({visit_count: stat.visit_count +1}).eq("id",1);
+        refreshStatDisplay();
+    }catch(err){
+        console.error("addVisitCount error",err);
+    }
+}
+
+// 获取注册用户数量
+async function getUserTotal(){
+    try{
+        const {count,error} = await supabase.from("app_users").select("*",{count:"exact",head:true});
+        if(error) throw error;
+        return count;
+    }catch(err){
+        console.error("getUserTotal error",err);
+        return 0;
+    }
+}
+
+// 刷新统计文字
+async function refreshStatDisplay(){
+    const stats = await getStats();
+    const userCount = await getUserTotal();
+    const t = langData[currentLang];
+    if(stats){
+        const str = `${t.statVisit}: ${stats.visit_count} | ${t.statUser}: ${userCount}`;
+        statTextEl.innerText = str;
+        headerStatEl.innerText = str;
+    }else{
+        statTextEl.innerText = t.dbError;
+    }
+}
+
+// 注册账号
+btnRegister.onclick = async ()=>{
+    const un = usernameEl.value.trim();
+    const pw = passwordEl.value.trim();
+    const t = langData[currentLang];
+    if(!un || !pw){ alert(t.emptyInput); return; }
+    try{
+        const {data:existUser} = await supabase.from("app_users").select("*").eq("username",un);
+        if(existUser.length > 0){ alert(t.userExist); return; }
+        await supabase.from("app_users").insert([{username:un,password:pw}]);
+        alert(t.regSuccess);
+        usernameEl.value="";
+        passwordEl.value="";
+        refreshStatDisplay();
+    }catch(err){
+        console.error("register error",err);
+        alert(t.dbError);
+    }
+};
+
+// 登录账号
+btnLogin.onclick = async ()=>{
+    const un = usernameEl.value.trim();
+    const pw = passwordEl.value.trim();
+    const t = langData[currentLang];
+    if(!un||!pw){ alert(t.emptyInput);return; }
+    try{
+        const {data:userList} = await supabase.from("app_users").select("*").eq("username",un);
+        if(userList.length === 0){ alert(t.noAccount);return; }
+        const user = userList[0];
+        if(user.password !== pw){ alert(t.pwdErr);return; }
+        currentUser = un;
+        userShow.innerText = un;
+        authModal.classList.add("hide");
+        chatHeader.classList.remove("hide");
+        chatBox.classList.remove("hide");
+        inputPanel.classList.remove("hide");
+        await loadMessages();
+        startRealtime();
+    }catch(err){
+        console.error("login error",err);
+        alert(t.dbError);
+    }
+};
+
+// 加载历史消息
+async function loadMessages(){
+    chatBox.innerHTML = "";
+    try{
+        const {data,error} = await supabase.from("messages").select("*").order("created_at",{ascending:true});
+        if(error) throw error;
+        data.forEach(m=> renderOneMsg(m.username,m.content));
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }catch(err){
+        console.error("load msg error",err);
+    }
+}
+
+// 单条消息渲染
+function renderOneMsg(sender,content){
+    const div = document.createElement("div");
+    div.className = "msg-item " + (sender===currentUser?"msg-self":"msg-other");
+    div.innerHTML = `
+        <div class="msg-name">${escapeHtml(sender)}</div>
+        <div class="msg-bubble">${escapeHtml(content)}</div>
+    `;
+    chatBox.appendChild(div);
+    chatBox.scrollTop = chatBox.scrollHeight;
+}
+function escapeHtml(str){
+    return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// 开启实时监听消息
+function startRealtime(){
+    realtimeChannel = supabase
+        .channel("public:messages")
+        .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},(payload)=>{
+            renderOneMsg(payload.new.username, payload.new.content);
+        })
+        .subscribe();
+}
+
+//发送消息
+async function sendMsg(){
+    const text = chatInput.value.trim();
+    const t = langData[currentLang];
+    if(!text){ alert(t.emptyMsg); return; }
+    try{
+        await supabase.from("messages").insert([{username:currentUser, content:text}]);
+        chatInput.value="";
+    }catch(err){
+        console.error("send msg error",err);
+        alert(t.dbError);
+    }
+}
+sendBtn.onclick = sendMsg;
+chatInput.onkeydown = e=>{
+    if(e.key === "Enter") sendMsg();
+};
+
+// 切换语言
+switchLangBtn.onclick = ()=>{
+    currentLang = currentLang==="zh"?"en":"zh";
+    updateLang();
+};
+
+// 语音识别 Web Speech
+let recognition = null;
+if(window.webkitSpeechRecognition || window.SpeechRecognition){
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    voiceBtn.onclick = ()=>{
+        if(!recognition) return;
+        recognition.lang = currentLang==="zh"?"zh-CN":"en-US";
+        recognition.start();
+        alert(langData[currentLang].voiceTip);
+    };
+    recognition.onresult = (ev)=>{
+        const res = ev.results[0][0].transcript;
+        chatInput.value = res;
+    };
+} else {
+    voiceBtn.disabled = true;
+    voiceBtn.title="浏览器不支持语音识别";
+}
+
+// 页面初始化
+(async function init(){
+    updateLang();
+    await addVisitCount();
+})();
+</script>
+</body>
+</html>
